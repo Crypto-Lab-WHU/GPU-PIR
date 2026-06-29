@@ -34,10 +34,13 @@ The source tree is organized as follows.
 │   └── uint128_type.h
 ├── test/
 │   ├── CMakeLists.txt
+│   ├── bench_lut_only.cpp
 │   ├── bench_pir.cpp
 │   ├── pir_test_utils.h
 │   ├── test_pir.cpp
 │   └── test_pir_utils.cpp
+├── run_bench_pir.sh
+├── run_bench_lut.sh
 └── README.md
 ```
 
@@ -57,45 +60,80 @@ The current repository has been exercised in the following environment:
 - Ubuntu 22.04
 - CUDA 12.4.0
 - NVIDIA CUDA Docker base image: `nvidia/cuda:12.4.0-devel-ubuntu22.04`
-- CMake 3.22.1 or newer
+- CMake 3.25 or newer
 - GCC/G++ 11 or newer
 
 ### Required dependencies
 
-System packages used by the current build flow:
+Build-essential packages (typically pre-installed on development machines, but listed for completeness):
 
-- `build-essential`
-- `ca-certificates`
-- `cmake`
-- `curl`
-- `git`
-- `libeigen3-dev`
-- `libgmp-dev`
-- `libmpfr-dev`
-- `libssl-dev`
-- `pkg-config`
-- `python3-pip`
-- `wget`
+- `build-essential`, `cmake`, `git`, `pkg-config`
+
+Libraries that may need manual installation:
+
+- `libssl-dev` — required by emp-tool (OpenSSL)
+- `libeigen3-dev`, `libgmp-dev`, `libmpfr-dev` — required by emp-ot
 
 CUDA and GPU requirements:
 
-- CUDA toolkit compatible with CUDA 12.x
+- CUDA toolkit 12.x installed and **visible in `PATH`** (see [Configure CUDA environment](#configure-cuda-environment) below)
 - an NVIDIA GPU with a supported driver
-- a GPU architecture compatible with the current `CMAKE_CUDA_ARCHITECTURES` setting
+- a GPU architecture compatible with the CUDA code; the build auto-detects this by default (see [GPU architecture](#gpu-architecture) below)
 
 Bundled library dependencies:
 
 - `emp-tool` from the bundled `emp-tool/` directory
 - `emp-ot` from the bundled `emp-ot/` directory
 
-The build currently sets:
+### Configure CUDA environment
 
-- `CMAKE_CUDA_ARCHITECTURES=89`
-- `entry_size=16`
-- `NUM_STREAMS=10`
-- `NUM_CHUNKS=32768`
+The CUDA toolkit must be discoverable at configure time. Verify that `nvcc` is on `PATH`:
 
-If you target a GPU generation other than architecture 89, update `CMAKE_CUDA_ARCHITECTURES` in `CMakeLists.txt` before rebuilding.
+```bash
+nvcc --version
+```
+
+If `nvcc` is not found, add the CUDA toolkit to your environment. The typical install location is `/usr/local/cuda`:
+
+```bash
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+```
+
+Add these lines to your `~/.bashrc` (or equivalent shell profile) to make the setting persistent.
+
+If you prefer not to modify `PATH`, you can pass the compiler directly to CMake:
+
+```bash
+cmake -S . -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+```
+
+### GPU architecture
+
+By default, the build automatically detects the GPU architecture via `nvidia-smi` at configure time and sets `CMAKE_CUDA_ARCHITECTURES` accordingly. You will see a log line like:
+
+```
+-- Auto-detected GPU architecture: sm_90
+```
+
+If `nvidia-smi` is not available or returns no GPU info, the build falls back to CMake's built-in `native` detection.
+
+To override the auto-detected value (e.g., when cross-compiling for a different GPU), pass it explicitly:
+
+```bash
+cmake -S . -B build -DCMAKE_CUDA_ARCHITECTURES=90
+```
+
+Common architecture numbers:
+
+| Value | GPU generation | Examples |
+|-------|---------------|----------|
+| 80    | Ampere        | A100, A10 |
+| 86    | Ampere        | RTX 3090, A40 |
+| 89    | Ada Lovelace  | RTX 4090, L4, L40 |
+| 90    | Hopper        | H100, H20 |
+
+Using a mismatched architecture value (e.g., compiling for sm_89 but running on a Hopper GPU) will cause a runtime error: `the provided PTX was compiled with an unsupported toolchain`.
 
 ## Build Instructions
 
@@ -127,60 +165,70 @@ docker run --rm -it --gpus all -v "$(pwd)":/workspace gpu-pir-artifact
 
 Inside the container, the project is already built under `/workspace/build`.
 
+> **Note:** When using Docker, the GPU is not visible during `docker build`, so the `nvidia-smi` auto-detection will fail. The Dockerfile uses `ARG CUDA_ARCH=89` (Ada Lovelace) as a default. Override it to match your target GPU:
+>
+> ```bash
+> docker build --build-arg CUDA_ARCH=90 -t gpu-pir-artifact .
+> ```
+>
+> Common values: `80` (A100), `86` (RTX 3090, A40), `89` (RTX 4090, L4, L40), `90` (H100, H20).
+
 ### Option 2: Manual build
 
-Install system packages:
+1. Install required packages (skip any that are already present on your system):
 
-```bash
-sudo apt update
-sudo apt install -y \
-    build-essential \
-    ca-certificates \
-    cmake \
-    curl \
-    git \
-    libeigen3-dev \
-    libgmp-dev \
-    libmpfr-dev \
-    libssl-dev \
-    pkg-config \
-    python3-pip \
-    wget
-```
+    ```bash
+    sudo apt update
+    sudo apt install -y build-essential cmake git pkg-config libssl-dev libeigen3-dev libgmp-dev libmpfr-dev
+    ```
 
-Build and install the bundled EMP dependencies:
+2. Ensure the CUDA toolkit is on `PATH` (see [Configure CUDA environment](#configure-cuda-environment)).
 
-```bash
-cmake -S emp-tool -B emp-tool/build
-cmake --build emp-tool/build -j"$(nproc)"
-sudo cmake --install emp-tool/build
+3. Build and install the bundled EMP dependencies:
 
-cmake -S emp-ot -B emp-ot/build
-cmake --build emp-ot/build -j"$(nproc)"
-sudo cmake --install emp-ot/build
-```
+    ```bash
+    cmake -S emp-tool -B emp-tool/build
+    cmake --build emp-tool/build -j"$(nproc)"
+    sudo cmake --install emp-tool/build
 
-If the EMP packages are not discovered automatically, export:
+    cmake -S emp-ot -B emp-ot/build
+    cmake --build emp-ot/build -j"$(nproc)"
+    sudo cmake --install emp-ot/build
+    ```
 
-```bash
-export CMAKE_PREFIX_PATH="/usr/local/lib/cmake/emp-tool:/usr/local/lib/cmake/emp-ot:${CMAKE_PREFIX_PATH}"
-```
+    If the EMP packages are not discovered automatically, export:
 
-Then build this repository:
+    ```bash
+    export CMAKE_PREFIX_PATH="/usr/local/lib/cmake/emp-tool:/usr/local/lib/cmake/emp-ot:${CMAKE_PREFIX_PATH}"
+    ```
 
-```bash
-cmake -S . -B build
-cmake --build build -j"$(nproc)"
-```
+4. Build this repository:
+
+    ```bash
+    cmake -S . -B build
+    cmake --build build -j"$(nproc)"
+    ```
+
+    If `nvcc` is not on `PATH`, use:
+
+    ```bash
+    cmake -S . -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+    ```
+
+    If you need to target a specific GPU architecture:
+
+    ```bash
+    cmake -S . -B build -DCMAKE_CUDA_ARCHITECTURES=90
+    ```
 
 ## How to Run the Artifact
 
-The build produces three binaries under `build/bin`.
+The build produces four binaries under `build/test` (`test_pir`, `test_pir_utils`, `bench_pir`, and `bench_lut_only`). The three drivers below cover functional checks, the PIR functional path, and the all-in-one benchmark; the LUT-only benchmark (`bench_lut_only`) is described together with the reproduction scripts in [Reproducing paper results](#reproducing-paper-results).
 
 ### 1. Utility regression checks
 
 ```bash
-./build/bin/test_pir_utils
+./build/test/test_pir_utils
 ```
 
 This binary checks helper logic and some source-level repository invariants. It does not require a visible CUDA device.
@@ -188,15 +236,15 @@ This binary checks helper logic and some source-level repository invariants. It 
 ### 2. Functional PIR driver
 
 ```bash
-./build/bin/test_pir [n] [batch_size]
+./build/test/test_pir [n] [batch_size]
 ```
 
 Examples:
 
 ```bash
-./build/bin/test_pir
-./build/bin/test_pir 24 512
-./build/bin/test_pir 20 128
+./build/test/test_pir
+./build/test/test_pir 24 512
+./build/test/test_pir 20 128
 ```
 
 Default values:
@@ -207,21 +255,70 @@ Default values:
 ### 3. Benchmark driver
 
 ```bash
-./build/bin/bench_pir [n] [batch_size]
+./build/test/bench_pir [n] [batch_size]
 ```
 
 Examples:
 
 ```bash
-./build/bin/bench_pir
-./build/bin/bench_pir 22 512
-./build/bin/bench_pir 20 128
+./build/test/bench_pir
+./build/test/bench_pir 22 512
+./build/test/bench_pir 20 128
 ```
 
 Default values:
 
 - `n = 22`
 - `batch_size = 512`
+
+## Reproducing paper results
+
+Two helper scripts in the repository root drive the benchmarks for reproducing and verifying the paper's experimental results. Each writes structured data plus figures into its own output directory. Both require a completed build (see [Build Instructions](#build-instructions)) and a visible CUDA device, and they need Python 3 with `matplotlib`, `pandas`, and `numpy` for the figure-generation step.
+
+| Script | Reproduces | Configuration | Output directory |
+|--------|-----------|---------------|------------------|
+| `run_bench_pir.sh` | **Table 2** — throughput and CUDA memory of the pipeline vs. non-pipeline PIR implementations | `n = 19..24`, `batch_size = 512` | `bench_results_pir/` |
+| `run_bench_lut.sh` | **Figure 11** — DPF-PIR LUT throughput as a function of `batch_size` | `n ∈ {16, 18, 20, 24}`, `batch_size ∈ {1, 10, 100, 1000, 10000}` | `bench_results_lut/` |
+
+Usage (defaults reproduce the paper directly):
+
+```bash
+# Table 2 — pipeline vs non-pipeline throughput & memory (n=19..24, batch=512)
+./run_bench_pir.sh
+
+# Figure 11 — LUT throughput vs batch_size (n=16,18,20,24)
+./run_bench_lut.sh
+```
+
+Both scripts also accept optional overrides:
+
+```bash
+./run_bench_pir.sh "19 20 21" 256     # n list + batch_size
+./run_bench_lut.sh "16 18" "10 100"   # n list + batch list
+```
+
+### `run_bench_pir.sh` (Table 2)
+
+Runs `bench_pir` for `n = 19, 20, ..., 24` at `batch_size = 512` and parses the `DPF-PIR` (non-pipeline) and `DPF-PIR pipeline` segments. The LUT segment emitted by `bench_pir` is ignored here. For each `(n, mode)` point it records throughput (PIRs/s) and allocated CUDA memory (MB), then plots the two modes against `n`. Produces:
+
+- `bench_results_pir/results.csv` — `n, mode, throughput, memory_mb`
+- `bench_results_pir/throughput_vs_n.png` and `bench_results_pir/memory_vs_n.png`
+- `bench_results_pir/run_log.txt` — raw program output per run, for verification
+
+### `run_bench_lut.sh` (Figure 11)
+
+Runs the LUT-only benchmark `bench_lut_only` for `n ∈ {16, 18, 20, 24}` across `batch_size ∈ {1, 10, 100, 1000, 10000}` and plots LUT throughput (PIRs/s, log-x axis) versus `batch_size`. LUT and regular PIR are evaluated separately, so these figures contain only the LUT series. Produces:
+
+- `bench_results_lut/results.csv` — `n, batch, time_ms, throughput`
+- `bench_results_lut/lut_n16_n18.png` — n=16 and n=18 on one figure
+- `bench_results_lut/lut_n20_n24.png` — n=20 and n=24 on one figure
+- `bench_results_lut/run_log.txt` — raw program output per run, for verification
+
+The `bench_lut_only` binary can also be run directly:
+
+```bash
+./build/test/bench_lut_only [n] [batch_size]   # default n=20, batch_size=512
+```
 
 ## Configuration Options
 
@@ -241,12 +338,11 @@ Current runtime constraints enforced by the drivers:
 
 ### Build-time configuration
 
-The current build uses the following fixed settings:
-
-- `CMAKE_CUDA_ARCHITECTURES=89` in `CMakeLists.txt`
-- `entry_size=16` in `test/CMakeLists.txt`
-- `NUM_STREAMS=10` in `test/CMakeLists.txt`
-- `NUM_CHUNKS=32768` in `test/CMakeLists.txt`
+- **GPU architecture** — controlled by `CMAKE_CUDA_ARCHITECTURES` (see [GPU architecture](#gpu-architecture)). Defaults to auto-detection via `nvidia-smi`.
+- **Compile-time constants** — defined in `test/CMakeLists.txt`:
+  - `entry_size=16`
+  - `NUM_STREAMS=10`
+  - `NUM_CHUNKS=32768`
 
 You can change these values and rebuild if you want to evaluate other GPU targets or compile-time constants.
 

@@ -1,5 +1,5 @@
 function(configure_pir_target _name _enable_lineinfo)
-    target_link_libraries(${_name} ${EMP-OT_LIBRARIES})
+    target_link_libraries(${_name} emp-ot::emp-ot emp-tool::emp-tool)
     target_include_directories(${_name} PRIVATE
         ${PROJECT_SOURCE_DIR}/mpc_keys
         /usr/local/cuda/include
@@ -56,3 +56,9 @@ add_plain_test_case(test_pir_utils)
 
 # Bench cases
 add_bench_case_with_run(bench_pir)
+
+# LUT-only bench
+if(EXISTS "${CMAKE_SOURCE_DIR}/test/bench_lut_only.cpp")
+    add_bench_executable(bench_lut_only)
+    add_test(NAME bench_lut_only COMMAND "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/bench_lut_only" WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/")
+endif()
