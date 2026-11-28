@@ -16,7 +16,7 @@ Beyond the paper, this repository also carries a serving-oriented extension: an 
 GGM tree evaluation, a low-latency kernel path for single queries, and a high-throughput
 shared-memory tiling path for batched queries. None of the paper's results or the artifact
 paths described above change; the design, the new drivers (`test_fused_eval`,
-`bench_sector_view`, `bench_serving`) and the constraints are documented in
+`test_serving_params`, `bench_sector_view`, `bench_serving`) and the constraints are documented in
 [SERVING.md](SERVING.md).
 
 ## Repository Organization

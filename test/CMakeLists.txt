@@ -55,6 +55,8 @@ add_test(NAME test_pir_small COMMAND $<TARGET_FILE:test_pir> 12 33 WORKING_DIREC
 add_plain_test_case(test_pir_utils)
 add_plain_test_case(test_fused_eval)
 set_tests_properties(test_fused_eval PROPERTIES SKIP_RETURN_CODE 77)
+add_plain_test_case(test_serving_params)
+set_tests_properties(test_serving_params PROPERTIES SKIP_RETURN_CODE 77)
 
 # Bench cases
 add_bench_case_with_run(bench_pir)

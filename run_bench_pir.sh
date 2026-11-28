@@ -13,8 +13,8 @@
 #     bench_results_pir/run_log.txt
 #
 # 备注: bench_pir 二进制会依次跑 row-major / batch sync / batch async / pipeline /
-#       LUT; 本脚本解析前四种, LUT 段被忽略。row-major 用 PirContext（含 blocksum）,
-#       batch sync/async 用独立的 PirBatchContext（不含 blocksum）; memory 均排除 db。
+#       LUT; 本脚本解析前四种, LUT 段被忽略。row-major 用 PirContext（含 output 与单查询 partials）,
+#       batch sync/async 用独立的 pir_batch_context（含批量 partials 与 output）; memory 均排除 db。
 #       pipeline 路径该统计口径几乎不含 db 大头, 故其 memory 数值极小, 论文引用时需注明口径。
 #
 set -u

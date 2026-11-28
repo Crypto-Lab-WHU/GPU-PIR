@@ -28,9 +28,9 @@ bool benchmark_pir(int n, int batch_size)
     {
         return false;
     }
-    if (batch_size > 512)
+    if (batch_size <= 0)
     {
-        std::cerr << "[FAIL] bench_pir: batch-tiled modes require batch_size <= 512\n";
+        std::cerr << "[FAIL] bench_pir: batch_size must be >= 1\n";
         return false;
     }
 

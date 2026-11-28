@@ -381,22 +381,22 @@ __device__ __forceinline__ void EvalAll_BlockEvaluation_body(uint32_t *key, int 
 	__shared__ uint8_t shared_t[512 * 2];
 	__shared__ uint128_t shared_sCW[10];
 	__shared__ uint8_t shared_tCW[10][2];
-	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	uint64_t idx = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
 	int tid = threadIdx.x;
 	// if (tid >= (1 << layer_len))
 	// 	return;
 
-	int Stride = (1 << (layer_len + layer)) / 2; // layer stride
-	int batch_id = idx / Stride;
+	uint64_t Stride = (uint64_t{1} << (layer_len + layer)) >> 1; // layer stride
+	uint64_t batch_id = idx / Stride;
 	// if (idx == 0)
-	// 	printf("batch_id = %d, Stride = %d, layer_len = %d, layer = %d\n", batch_id, Stride, layer_len, layer);
+	// 	printf("batch_id = %llu, Stride = %llu, layer_len = %d, layer = %d\n", (unsigned long long)batch_id, (unsigned long long)Stride, layer_len, layer);
 
 	idx %= Stride;
 	int maxlayer = k[0] - 7;
-	unsigned char *k_local = (unsigned char *)(k + batch_id * (1 + 16 + 1 + 18 * maxlayer + 16));
-	uint128_t *s_local = (uint128_t *)(s + batch_id * (1 << layer));
-	uint32_t *t_local = (uint32_t *)(t + batch_id * (1 << layer));
-	uint128_t *res_s_local = (uint128_t *)(res_s + batch_id * (1 << (layer_len + layer)));
+	unsigned char *k_local = (unsigned char *)(k + batch_id * static_cast<uint64_t>(1 + 16 + 1 + 18 * maxlayer + 16));
+	uint128_t *s_local = (uint128_t *)(s + batch_id * (uint64_t{1} << layer));
+	uint32_t *t_local = (uint32_t *)(t + batch_id * (uint64_t{1} << layer));
+	uint128_t *res_s_local = (uint128_t *)(res_s + batch_id * (uint64_t{1} << (layer_len + layer)));
 
 	if (tid == 0)
 	{
@@ -454,7 +454,7 @@ __device__ __forceinline__ void EvalAll_BlockEvaluation_body(uint32_t *key, int 
 				}
 				else
 				{
-					uint32_t *res_t_local = (uint32_t *)(res_t + batch_id * (1 << (layer_len + layer)));
+					uint32_t *res_t_local = (uint32_t *)(res_t + batch_id * (uint64_t{1} << (layer_len + layer)));
 					res_s_local[idx * 2] = sL;
 					res_s_local[idx * 2 + 1] = sR;
 
@@ -1025,7 +1025,8 @@ __global__ void seed_copy(uint128_t *d_s, uint32_t *d_t, uint8_t *key, int maxla
 	int idx = blockDim.x * blockIdx.x + threadIdx.x;
 	if (idx < N)
 	{
-		memcpy(d_s + idx, &key[1 + idx * (1 + 16 + 1 + 18 * maxlayer + 16)], 16);
-		d_t[idx] = key[17 + idx * (1 + 16 + 1 + 18 * maxlayer + 16)];
+		const size_t record_offset = static_cast<size_t>(idx) * (1 + 16 + 1 + 18 * maxlayer + 16);
+		memcpy(d_s + idx, &key[1 + record_offset], 16);
+		d_t[idx] = key[17 + record_offset];
 	}
 }

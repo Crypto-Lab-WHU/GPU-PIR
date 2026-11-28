@@ -11,12 +11,15 @@
 // struct PirPipelineContext / PirLutContext / PirStreamContext are defined in pir_context.h.
 
 extern "C++" uint128_t *test_dpf_pir(uint8_t *key, const PirContext &ctx, int N);
-// mode: 0 = batch_mul_red_sync_kernel, 1 = batch_mul_red_async_kernel
+extern "C++" uint128_t *test_dpf_pir_low_latency(uint8_t *key, const PirContext &ctx, int batch_size);
+// mode: 0 = sync shared-memory tile, 1 = async cp.async double-buffered tile
 extern "C++" uint128_t *test_dpf_pir_batch(uint8_t *key, const pir_batch_context &ctx, int batch_size, int mode);
 extern "C++" uint128_t *test_dpf_pir_pipeline(uint8_t *key, const PirPipelineContext &ctx, const PirStreamContext &handles, int N);
 extern "C++" uint32_t *test_dpf_pir_LUT(uint8_t *key, const PirLutContext &ctx, int N);
 extern "C++" PirContext init_pir(int N, int n, uint128_t *db);
+extern "C++" PirContext init_pir_low_latency(int batch_size, int db_bits, uint128_t *db, const PirLowLatencyConfig &cfg = {});
 extern "C++" pir_batch_context init_pir_batch(int batch_size, int db_bits, uint128_t *db);
+extern "C++" pir_batch_context init_pir_batch(int batch_size, int db_bits, uint128_t *db, const PirBatchConfig &cfg);
 extern "C++" PirPipelineContext init_pir_pipeline(int N, int n, uint128_t *db);
 extern "C++" PirLutContext init_pir_LUT(int N, int n, uint32_t *db);
 
@@ -29,3 +32,6 @@ void free_cuda_memory(PirPipelineContext &ctx);
 void free_cuda_memory(PirLutContext &ctx);
 
 extern "C" void cudaDPFkeygen(uint8_t *k0, uint8_t *k1, uint64_t *alpha, int n, int maxlayer, int batch_size);
+
+size_t batch_tiled_smem_bytes(bool async_mode, int entry_words, int tile_entries);
+bool batch_tiled_config_supported(bool async_mode, int entry_words, int tile_entries, size_t max_smem_optin);
